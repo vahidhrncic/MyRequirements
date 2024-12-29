@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>Firefly AI - PDF Analysis (Adapted Logic)</title>
+
+  <!-- Tailwind CSS -->
+  <link 
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css"
+    integrity="sha512-..."
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
+
+  <!-- jQuery -->
+  <script 
+    src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
+    integrity="sha512-..."
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer">
+  </script>
+
+  <!-- PDF.js Library -->
+  <script 
+    src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+    integrity="sha512-..."
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer">
+  </script>
+
+  <script>
+    // PDF.js Worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
+
+  <style>
+    /* Progress Ring Styles (for file parsing) */
+    .progress-ring {
+      transform: rotate(-90deg);
+    }
+
+    /* Fade Animation */
+    .fade-enter {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    .fade-enter-active {
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity 300ms, transform 300ms;
+    }
+
+    /* File Drop Active State */
+    .file-drop-active {
+      border-color: #F59E0B;
+      background-color: rgba(245, 158, 11, 0.1);
+    }
+
+    /* Keyword Tag Animation */
+    .keyword-tag {
+      animation: pop 0.3s ease-out;
+    }
+    @keyframes pop {
+      0% {
+        transform: scale(0.8);
+        opacity: 0;
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    /* Step Indicator Styles (Number Bubbles) */
+    .step-indicator {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: #F59E0B;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+    }
+    .step-connector {
+      flex-grow: 1;
+      height: 2px;
+      background: #F59E0B;
+    }
+
+    /* Additional progress-bar (for horizontal steps) */
+    .progress-bar {
+      position: relative;
+      height: 6px;
+      background-color: #e5e7eb; /* Tailwind gray-200 */
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    .progress-bar-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      background-color: #F59E0B; /* Tailwind yellow-500 */
+      transition: width 0.3s ease;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <!-- Header -->
+  <header class="bg-white shadow-sm fixed w-full top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-4">
+      <div class="flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+          <svg class="h-8 w-8 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path 
+              stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <span class="text-xl font-semibold">Firefly AI</span>
+        </div>
+
+        <nav class="hidden md:flex space-x-8">
+          <a href="#" class="text-gray-600 hover:text-gray-900 transition-colors">Support</a>
+          <a href="#" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600 transition-colors">
+            Get Started
+          </a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-4xl mx-auto px-4 py-8 mt-20">
+    <!-- Additional progress-bar for a visual step progress (optional) -->
+    <div class="progress-bar mb-8">
+      <div class="progress-bar-fill" id="progressBarFill" style="width: 33%;"></div>
+    </div>
+
+    <div id="viewsContainer" class="fade-enter-active"></div>
+  </main>
+
+  <script>
+    /**
+     * Konfiguration, inkl. Regex zur Kapitel-Erkennung.
+     * Passe 'chapter_pattern' an deine Dokumente an.
+     * Beispiel:
+     *   - /^(\\d+(\\.\\d+)*)\\s+.+/gm => Sucht Zeilen, die mit Ziffern (und Punkten) anfangen und dann Text enthalten.
+     */
+    const config = {
+      logging: { level: 'INFO', file: 'log.txt' },
+      regex: {
+        multi_space: /\s{2,}/g,
+        hyphen_break: /(\w)-\s+(\w)/g,
+        // z.B. "1 Introduction" oder "2.1.3 More details"
+        chapter_pattern: /^(\d+(?:\.\d+)*)\s+([A-ZÄÖÜ][^0-9.]*)$/gm
+      },
+      abbreviations: [
+    'bsp', 'zB', 'uA', 'Abz.', 'Abb.', 'i.d.R.', 'etc.', 'd.h.', 's.o.', 'u.a.', 'bzw.', 'vgl.', 'siehe'
+  ],
+      search: {
+        words: []
+      }
+    };
+
+    // Regex helper
+    function escapeRegExp(text) {
+      return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // Logging emulation
+    function logInfo(msg) { console.log(`[INFO] ${msg}`); }
+    function logDebug(msg) { console.debug(`[DEBUG] ${msg}`); }
+    function logError(msg) { console.error(`[ERROR] ${msg}`); }
+
+    /**
+     * Hilfsfunktionen:
+     * - Text-Cleanup
+     * - Keyword-Highlighting
+     * - Satzabschluss etc.
+     */
+    const Helpers = {
+      cleanText(rawText) {
+        // 1) Mehrfach-Leerzeichen entfernen
+        let text = rawText.replace(config.regex.multi_space, ' ').trim();
+        // 2) Trennstriche entfernen (z.B. "Konfi-\n guration")
+        text = text.replace(config.regex.hyphen_break, '$1$2');
+        return text;
+      },
+
+      highlightWords(sentence, searchWords) {
+        let result = sentence;
+        searchWords.forEach(kw => {
+          const kwRegex = new RegExp(`\\b${escapeRegExp(kw)}\\b`, 'gi');
+          result = result.replace(kwRegex, (match) => `<strong>${match}</strong>`);
+        });
+        return result;
+      },
+
+      sentenceRules(sentence) {
+        // Sicherstellen, dass der Satz mit einem Großbuchstaben beginnt
+        if (sentence && !/[A-ZÄÖÜ]/.test(sentence[0])) {
+          sentence = sentence[0].toUpperCase() + sentence.slice(1);
+        }
+
+        // Sicherstellen, dass der Satz mit einem Satzendzeichen endet
+        if (!/[.?!]$/.test(sentence)) {
+          // Überprüfen, ob der Satz mit einer bekannten Abkürzung endet
+          const endsWithAbbreviation = config.abbreviations.some(abbr => sentence.endsWith(abbr));
+          if (!endsWithAbbreviation) {
+            sentence += '.';
+          }
+        }
+        return sentence;
+      }
+    };
+
+    /**
+     * Findet ggf. Kapitelzeilen in einer Seite.
+     * Falls nichts gematcht wurde => Fallback "No chapter found".
+     * Hier nehmen wir das **letzte** gefundene Kapitel auf einer Seite,
+     * du kannst auch das erste nehmen, falls gewünscht.
+     */
+    function detectChapterForPage(pageText) {
+      const matches = [...pageText.matchAll(config.regex.chapter_pattern)];
+      if (matches.length > 0) {
+        const lastMatch = matches[matches.length - 1];
+        return `${lastMatch[1]} ${lastMatch[2]}`;
+      } else {
+        return "No chapter found";
+      }
+    }
+
+    // Globaler Zustand
+    const state = {
+      files: [],     // PDF-Dateien
+      keywords: [],  // Keywords
+      results: [],   // Analyseergebnisse
+      currentView: 'upload'
+    };
+
+    // HTML-Templates (3 Views)
+    const views = {
+      // UPLOAD-VIEW
+      upload: `
+        <div class="bg-white rounded-lg shadow-lg p-8">
+          <h2 class="text-2xl text-center font-semibold mb-6">Upload PDF Documents</h2>
+
+          <div
+            class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center transition-colors duration-200"
+            id="dropZone"
+          >
+            <input type="file" id="fileInput" multiple accept=".pdf" class="hidden" />
+            <label for="fileInput" class="cursor-pointer block">
+              <div class="flex flex-col items-center">
+                <svg
+                  class="w-16 h-16 text-yellow-500 mb-4"
+                  fill="none" stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                  />
+                </svg>
+                <p class="text-gray-600 mb-4">Drag & drop your PDF files here or click to browse</p>
+                <p class="text-sm text-gray-500 mb-4">Supported format: PDF</p>
+              </div>
+            </label>
+          </div>
+
+          <div id="fileList" class="mt-8 space-y-4"></div>
+
+          <div class="mt-8 flex justify-end">
+            <button
+              id="nextButton"
+              class="bg-yellow-500 text-white px-8 py-3 rounded-md
+                     hover:bg-yellow-600 transition-colors
+                     disabled:opacity-50 disabled:cursor-not-allowed
+                     transform hover:scale-105 duration-200"
+              disabled
+            >
+              Continue to Keywords
+            </button>
+          </div>
+        </div>
+      `,
+
+      // KEYWORDS-VIEW
+      keywords: `
+        <div class="bg-white rounded-lg shadow-lg p-8">
+          <h2 class="text-2xl font-semibold mb-6">Define Search Keywords</h2>
+
+          <div class="mb-8">
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+              Enter keywords to search for in your documents
+            </label>
+            <input
+              type="text"
+              id="keywordInput"
+              class="w-full px-4 py-3 border border-gray-300 rounded-md
+                     focus:ring-2 focus:ring-yellow-500 focus:border-transparent
+                     transition-shadow"
+              placeholder="Type a keyword and press Enter"
+            />
+          </div>
+
+          <div
+            id="keywordsList"
+            class="flex flex-wrap gap-2 min-h-[100px] mb-8 p-4 bg-gray-50 rounded-md"
+          ></div>
+
+          <div class="flex justify-between">
+            <button
+              id="backButton"
+              class="text-gray-600 hover:text-gray-800 flex items-center 
+                     transform hover:scale-105 duration-200"
+            >
+              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                />
+              </svg>
+              Back to Upload
+            </button>
+
+            <button
+              id="analyzeButton"
+              class="bg-yellow-500 text-white px-8 py-3 rounded-md 
+                     hover:bg-yellow-600 transition-colors
+                     transform hover:scale-105 duration-200"
+            >
+              Analyze Documents
+            </button>
+          </div>
+        </div>
+      `,
+
+      // RESULTS-VIEW
+      results: `
+        <div class="bg-white rounded-lg shadow-lg p-8">
+          <h2 class="text-2xl font-semibold mb-6">Analysis Results</h2>
+
+          <div class="overflow-x-auto rounded-lg border border-gray-200 mb-6">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Document</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Chapter</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PDF-Pagenumber</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requirement</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Keyword</th>
+                </tr>
+              </thead>
+              <tbody id="resultsTable" class="bg-white divide-y divide-gray-200"></tbody>
+            </table>
+          </div>
+
+          <div class="flex justify-between">
+            <button
+              id="backToStartButton"
+              class="text-gray-600 hover:text-gray-800 flex items-center
+                     transform hover:scale-105 duration-200"
+            >
+              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                />
+              </svg>
+              New Analysis
+            </button>
+            <button
+              id="downloadButton"
+              class="bg-yellow-500 text-white px-8 py-3 rounded-md
+                     hover:bg-yellow-600 transition-colors
+                     transform hover:scale-105 duration-200"
+            >
+              Download Results
+            </button>
+          </div>
+        </div>
+      `
+    };
+
+    /**
+     * Rendert die gewünschte View, bindet Events und aktualisiert den Schritt-Fortschritt.
+     */
+    function renderView(viewName) {
+      state.currentView = viewName;
+      const container = $('#viewsContainer');
+
+      // Fade out → Fade in
+      container.removeClass('fade-enter-active').addClass('fade-enter');
+      setTimeout(() => {
+        container.html(views[viewName]);
+        container.removeClass('fade-enter').addClass('fade-enter-active');
+        bindViewEvents(viewName);
+        updateStepIndicators(viewName);
+      }, 150);
+    }
+
+    // Step Indicators + Balken
+    function updateStepIndicators(viewName) {
+      const steps = { 'upload': 1, 'keywords': 2, 'results': 3 };
+      const currentStep = steps[viewName];
+
+      // Bubbles einfärben
+      for (let i = 1; i <= 3; i++) {
+        const indicator = $(`#step${i}`);
+        if (i <= currentStep) {
+          indicator.addClass('bg-yellow-500 text-white').removeClass('bg-gray-300 text-gray-500');
+        } else {
+          indicator.addClass('bg-gray-300 text-gray-500').removeClass('bg-yellow-500 text-white');
+        }
+      }
+
+      // Balken
+      const progressBarFill = $('#progressBarFill');
+      const percentage = currentStep === 1 ? 33 : currentStep === 2 ? 66 : 100;
+      progressBarFill.css('width', `${percentage}%`);
+    }
+
+    function bindViewEvents(viewName) {
+      if (viewName === 'upload') bindUploadEvents();
+      else if (viewName === 'keywords') bindKeywordEvents();
+      else if (viewName === 'results') bindResultsEvents();
+    }
+
+    // -------------------------------------------------------------
+    // UPLOAD-VIEW
+    // -------------------------------------------------------------
+    function bindUploadEvents() {
+      const dropZone = $('#dropZone');
+      const fileInput = $('#fileInput');
+      const nextButton = $('#nextButton');
+
+      // Drag & Drop 
+      dropZone.on('dragover dragenter', e => {
+        e.preventDefault();
+        dropZone.addClass('file-drop-active');
+      });
+      dropZone.on('dragleave dragend drop', () => {
+        dropZone.removeClass('file-drop-active');
+      });
+      dropZone.on('drop', e => {
+        e.preventDefault();
+        handleFiles(e.originalEvent.dataTransfer.files);
+      });
+
+      // Standard-Datei-Dialog
+      fileInput.on('change', e => handleFiles(e.target.files));
+
+      // "Continue to Keywords"
+      nextButton.on('click', () => renderView('keywords'));
+
+      renderFileList();
+      updateNextButtonState();
+    }
+
+    async function handleFiles(fileList) {
+      for (const file of fileList) {
+        if (file.type === 'application/pdf') {
+          const fileObj = {
+            file,
+            name: file.name,
+            size: file.size,
+            progress: 0,
+            pages: []
+          };
+          state.files.push(fileObj);
+          renderFileList();
+
+          try {
+            // PDF laden
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+            // Jede Seite extrahieren
+            for (let i = 1; i <= pdf.numPages; i++) {
+              const page = await pdf.getPage(i);
+              const textContent = await page.getTextContent();
+              const pageText = textContent.items.map(item => item.str).join(' ') + '\n';
+
+              // Clean-up
+              const cleaned = Helpers.cleanText(pageText);
+              fileObj.pages.push({ pageNumber: i, text: cleaned });
+
+              // Fortschritt
+              fileObj.progress = Math.floor((i / pdf.numPages) * 100);
+              renderFileList();
+            }
+            fileObj.progress = 100;
+            renderFileList();
+            logInfo(`Finished parsing ${fileObj.name}`);
+
+          } catch (err) {
+            logError(`PDF parse error: ${err}`);
+            state.files = state.files.filter(f => f !== fileObj);
+            renderFileList();
+          }
+        }
+      }
+      updateNextButtonState();
+    }
+
+    function renderFileList() {
+      const fileList = $('#fileList');
+      fileList.empty();
+
+      state.files.forEach((fileObj, index) => {
+        const progress = fileObj.progress;
+        const circumference = 2 * Math.PI * 18;
+        const offset = circumference - (progress / 100) * circumference;
+
+        fileList.append(`
+          <div class="flex items-center justify-between bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <div class="flex items-center space-x-4">
+              <!-- Circular progress ring -->
+              <div class="relative">
+                <svg class="progress-ring w-10 h-10">
+                  <circle
+                    class="text-gray-200"
+                    stroke-width="3"
+                    stroke="currentColor"
+                    fill="transparent"
+                    r="18"
+                    cx="20"
+                    cy="20"
+                  ></circle>
+                  <circle
+                    class="text-yellow-500 transition-all duration-200"
+                    stroke-width="3"
+                    stroke="currentColor"
+                    fill="transparent"
+                    r="18"
+                    cx="20"
+                    cy="20"
+                    style="stroke-dasharray: ${circumference}; stroke-dashoffset: ${offset};"
+                  ></circle>
+                </svg>
+                <span class="absolute inset-0 flex items-center justify-center text-sm font-medium text-gray-700">
+                  ${progress}%
+                </span>
+              </div>
+              <div>
+                <p class="font-medium text-gray-900">${fileObj.name}</p>
+                <p class="text-sm text-gray-500">${(fileObj.size / 1024 / 1024).toFixed(2)} MB</p>
+              </div>
+            </div>
+            <button
+              class="text-gray-400 hover:text-red-500 transition-colors"
+              onclick="removeFile(${index})"
+              aria-label="Remove File"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
+            </button>
+          </div>
+        `);
+      });
+    }
+
+    function removeFile(index) {
+      state.files.splice(index, 1);
+      renderFileList();
+      updateNextButtonState();
+    }
+
+    function updateNextButtonState() {
+      $('#nextButton').prop('disabled', state.files.length === 0);
+    }
+
+    // -------------------------------------------------------------
+    // KEYWORDS-VIEW
+    // -------------------------------------------------------------
+    function bindKeywordEvents() {
+      const keywordInput = $('#keywordInput');
+      $('#backButton').on('click', () => renderView('upload'));
+      $('#analyzeButton').on('click', () => {
+        analyzeDocuments();
+        renderView('results');
+      });
+
+      // Keyword hinzufügen via Enter
+      keywordInput.on('keypress', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const val = keywordInput.val().trim();
+          if (val && !state.keywords.includes(val)) {
+            state.keywords.push(val);
+            renderKeywords();
+            keywordInput.val('');
+          }
+        }
+      });
+
+      renderKeywords();
+    }
+
+    function renderKeywords() {
+      const list = $('#keywordsList');
+      list.empty();
+
+      if (state.keywords.length === 0) {
+        list.append(`
+          <p class="text-gray-400 text-center w-full py-4">
+            No keywords added yet. Type a keyword and press Enter to add it.
+          </p>
+        `);
+        return;
+      }
+
+      // Für jede Eingabe ein Keyword-Tag
+      state.keywords.forEach((kw, i) => {
+        list.append(`
+          <span class="keyword-tag bg-yellow-100 text-yellow-800 px-4 py-2 rounded-full flex items-center gap-2">
+            <span>${kw}</span>
+            <button
+              class="text-yellow-600 hover:text-yellow-800 transition-colors"
+              onclick="removeKeyword(${i})"
+              aria-label="Remove Keyword"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </span>
+        `);
+      });
+    }
+
+    function removeKeyword(index) {
+      state.keywords.splice(index, 1);
+      renderKeywords();
+    }
+
+    // -------------------------------------------------------------
+    // ANALYSIS
+    // -------------------------------------------------------------
+    function analyzeDocuments() {
+      state.results = [];
+      let idCounter = 1;
+
+      // Durch alle Dateien
+      state.files.forEach(fileObj => {
+        fileObj.pages.forEach(pageEntry => {
+          const pageNumber = pageEntry.pageNumber;
+          // Kapitel pro Seite identifizieren
+          const chapterFound = detectChapterForPage(pageEntry.text);
+
+          // Regex zur Satzerkennung unter Berücksichtigung von Abkürzungen
+          const sentenceEndings = /(?<!\b(?:bsp|zB|uA|Abz\.|Abb\.|i\.d\.R\.|etc\.|d\.h\.|s\.o\.|u\.a\.|bzw\.|vgl\.|siehe))(?<=[.!?])\s+/g;
+          const rawSentences = pageEntry.text.split(sentenceEndings).filter(s => s.trim().length > 0);
+
+          rawSentences.forEach(sentenceRaw => {
+            let sentence = sentenceRaw.trim();
+            sentence = Helpers.sentenceRules(sentence);
+
+            // Prüfe jedes Keyword
+            let foundKeyword = null;
+            state.keywords.forEach(kw => {
+              if (sentence.toLowerCase().includes(kw.toLowerCase())) {
+                foundKeyword = kw; // letztes Keyword, das gematched hat
+              }
+            });
+
+            if (foundKeyword) {
+              // Satz highlighten
+              const highlightedSentence = Helpers.highlightWords(sentence, state.keywords);
+
+              // In results ablegen
+              state.results.push({
+                id: idCounter++,
+                document: fileObj.name,
+                chapter: chapterFound,
+                pageNumber: pageNumber,
+                requirement: highlightedSentence, 
+                // Keyword als "Badge" (statt <strong>)
+                keyword: `
+                  <span class="keyword-tag bg-yellow-100 text-yellow-800 px-4 py-2 rounded-full inline-block">
+                    ${foundKeyword}
+                  </span>
+                `
+              });
+            }
+          });
+        });
+      });
+    }
+
+    // -------------------------------------------------------------
+    // RESULTS-VIEW
+    // -------------------------------------------------------------
+    function bindResultsEvents() {
+      renderResultsTable();
+      $('#downloadButton').on('click', downloadCSV);
+      $('#backToStartButton').on('click', () => {
+        // Reset
+        state.files = [];
+        state.keywords = [];
+        state.results = [];
+        renderView('upload');
+      });
+    }
+
+    // Ergebnis-Tabelle
+    function renderResultsTable() {
+      const tbl = $('#resultsTable');
+      tbl.empty();
+
+      if (state.results.length === 0) {
+        tbl.append(`
+          <tr>
+            <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+              <svg class="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <p>No matches found in your documents.</p>
+              <p class="text-sm mt-2">Try adding different keywords or uploading more documents.</p>
+            </td>
+          </tr>
+        `);
+        return;
+      }
+
+      // Falls Treffer existieren, trage sie ein
+      state.results.forEach(row => {
+        tbl.append(`
+          <tr class="hover:bg-gray-50 transition-colors">
+            <td class="px-6 py-4 text-sm text-gray-500">${row.id}</td>
+            <td class="px-6 py-4 text-sm font-medium text-gray-900">${row.document}</td>
+            <td class="px-6 py-4 text-sm text-gray-500">${row.chapter}</td>
+            <td class="px-6 py-4 text-sm text-gray-500">${row.pageNumber}</td>
+            <!-- whitespace-pre-wrap, damit Umbrüche erhalten bleiben -->
+            <td class="px-6 py-4 text-sm text-gray-700 whitespace-pre-wrap">${row.requirement}</td>
+            <td class="px-6 py-4 text-sm text-gray-500">${row.keyword}</td>
+          </tr>
+        `);
+      });
+    }
+
+    // CSV-Download
+    function downloadCSV() {
+      if (state.results.length === 0) {
+        alert("No results to download.");
+        return;
+      }
+
+      // Aufbau: ID, Document, Chapter, PDF-Pagenumber, Requirement, Keyword
+      const csvContent = [
+        ['ID', 'Document', 'Chapter', 'PDF-Pagenumber', 'Requirement', 'Keyword'],
+        ...state.results.map(r => [
+          r.id,
+          r.document.replace(/"/g, '""'),
+          r.chapter.replace(/"/g, '""'),
+          r.pageNumber,
+          r.requirement.replace(/"/g, '""'), 
+          // r.keyword enthält ggf. HTML (Tag). Wenn du reinen Text willst, müsstest du <span> o. Ä. entfernen
+          r.keyword.replace(/"/g, '""')
+        ])
+      ]
+      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'analysis_results.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // Einstieg
+    $(document).ready(() => {
+      renderView('upload');
+    });
+  </script>
+</body>
+</html>
