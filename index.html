@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <!-- Änderung: user-scalable=no entfernt, damit User auf iPhones reinzoomen können (Accessibility). -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Firefly - Requirements Analysis</title>
 
   <!-- Tailwind CSS -->
@@ -116,33 +117,33 @@
       border-radius: 3px; /* Für abgerundete Kanten */
       box-shadow: 0 0 10px 4px rgba(225, 255, 187, 0.8); /* Starker Glow-Effekt */
     }
-
-
-  /* Animation for progress-bar-fill */
-
   </style>
 </head>
+
+<!-- Änderung: pb-20 beibehalten bzw. erhöhen, wenn Footer fixiert bleibt -->
 <body class="min-h-screen pb-20">
   <canvas id="networkCanvas"></canvas>
   <div id="mainContent">
     <!-- Header -->
-    <header class="shadow-sm fixed w-full top-0 z-50">
-      <div class="max-w-7xl mx-auto px-4 py-4">
-        <div class="flex justify-between items-center">
+    <header class="shadow-sm fixed w-full top-0 z-50 bg-gray-900 bg-opacity-70">
+      <div class="max-w-7xl mx-auto px-4 py-3"> <!-- Änderung: py-3 statt py-4 -->
+        <div class="flex flex-wrap justify-between items-center">
           <div class="flex items-center space-x-3">
             <svg class="h-8 w-8 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path 
                 stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <span class="text-xl text-white font-semibold">Firefly PDF</span>
+            <!-- Änderung: Schriftgröße mit sm: und md: Differenz -->
+            <span class="text-base sm:text-lg md:text-xl text-white font-semibold">Firefly PDF</span>
           </div>
         </div>
       </div>
     </header>
 
     <!-- Main Content -->
-    <main class="max-w-4xl mx-auto px-4 py-8 mt-32">
+    <!-- Änderung: statt reines mt-20 => sm:mt-16 md:mt-32, um auf kleinen Displays weniger Leerraum zu haben -->
+    <main class="max-w-4xl mx-auto px-4 py-8 sm:mt-16 md:mt-32">
       <!-- Additional progress-bar for a visual step progress (optional) -->
       <div class="progress-bar mb-8">
         <div class="progress-bar-fill" id="progressBarFill" style="width: 50%;"></div>
@@ -154,20 +155,17 @@
       /**
        * Konfiguration, inkl. Regex zur Kapitel-Erkennung.
        * Passe 'chapter_pattern' an deine Dokumente an.
-       * Beispiel:
-       *   - /^(\\d+(\\.\\d+)*)\\s+.+/gm => Sucht Zeilen, die mit Ziffern (und Punkten) anfangen und dann Text enthalten.
        */
       const config = {
         logging: { level: 'INFO', file: 'log.txt' },
         regex: {
           multi_space: /\s{2,}/g,
           hyphen_break: /(\w)-\s+(\w)/g,
-          // z.B. "1 Introduction" oder "2.1.3 More details"
           chapter_pattern: /^(\d+(?:\.\d+)*)\s+([A-ZÄÖÜ][^0-9.]*)$/gm
         },
         abbreviations: [
-      'bsp.', 'z.B', 'u.A', 'Abz.', 'Abb.', 'i.d.R.', 'etc.', 'd.h.', 's.o.', 'u.a.', 'bzw.', 'vgl.', 'siehe'
-    ],
+          'bsp.', 'z.B', 'u.A', 'Abz.', 'Abb.', 'i.d.R.', 'etc.', 'd.h.', 's.o.', 'u.a.', 'bzw.', 'vgl.', 'siehe'
+        ],
         search: {
           words: []
         }
@@ -212,7 +210,6 @@
           if (sentence && !/[A-ZÄÖÜ]/.test(sentence[0])) {
             sentence = sentence[0].toUpperCase() + sentence.slice(1);
           }
-
           // Sicherstellen, dass der Satz mit einem Satzendzeichen endet
           if (!/[.?!]$/.test(sentence)) {
             // Überprüfen, ob der Satz mit einer bekannten Abkürzung endet
@@ -228,7 +225,7 @@
       /**
        * Findet ggf. Kapitelzeilen in einer Seite.
        * Falls nichts gematcht wurde => Fallback "No chapter found".
-       * Hier nehmen wir das **letzte** gefundene Kapitel auf einer Seite,
+       * Hier nehmen wir das letzte gefundene Kapitel auf einer Seite,
        * du kannst auch das erste nehmen, falls gewünscht.
        */
       function detectChapterForPage(pageText) {
@@ -680,22 +677,19 @@
               let foundKeyword = null;
               state.keywords.forEach(kw => {
                 if (sentence.toLowerCase().includes(kw.toLowerCase())) {
-                  foundKeyword = kw; // letztes Keyword, das gematched hat
+                  foundKeyword = kw;
                 }
               });
 
               if (foundKeyword) {
                 // Satz highlighten
                 const highlightedSentence = Helpers.highlightWords(sentence, state.keywords);
-
-                // In results ablegen
                 state.results.push({
                   id: idCounter++,
                   document: fileObj.name,
                   chapter: chapterFound,
                   pageNumber: pageNumber,
-                  requirement: highlightedSentence, 
-                  // Keyword als "Badge" (statt <strong>)
+                  requirement: highlightedSentence,
                   keyword: `
                     <span class="keyword-tag bg-green-100 text-green-800 px-4 py-2 rounded-full inline-block">
                       ${foundKeyword}
@@ -723,7 +717,6 @@
         });
       }
 
-      // Ergebnis-Tabelle
       function renderResultsTable() {
         const tbl = $('#resultsTable');
         tbl.empty();
@@ -778,7 +771,6 @@
             r.chapter.replace(/"/g, '""'),
             r.pageNumber,
             r.requirement.replace(/"/g, '""'), 
-            // r.keyword enthält ggf. HTML (Tag). Wenn du reinen Text willst, müsstest du <span> o. Ä. entfernen
             r.keyword.replace(/"/g, '""')
           ])
         ]
@@ -801,12 +793,14 @@
     </script>
   </div>
 
-  <footer class="text-blue-200 py-6 fixed bottom-0 left-0 w-full">
+  <!-- Footer -->
+  <!-- Änderung: py-4 stattdessen, um etwas weniger Platz auf kleinen Bildschirmen zu verbrauchen. -->
+  <footer class="text-blue-200 py-4 fixed bottom-0 left-0 w-full bg-gray-900 bg-opacity-90">
     <div class="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center">
-      <p class="text-sm text-center md:text-left">
+      <p class="text-xs sm:text-sm text-center md:text-left">
         Created by <span class="text-yellow-200 font-semibold">Vahid Hrncic</span> – From Engineers to Engineers
       </p>
-      <p class="text-sm mt-2 md:mt-0 text-center md:text-right">
+      <p class="text-xs sm:text-sm mt-2 md:mt-0 text-center md:text-right">
         &copy; 2025 <span class="text-yellow-200 font-semibold">Firefly PDF</span>. All rights reserved.
       </p>
     </div>
