@@ -5,40 +5,38 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Firefly - Requirements Analysis</title>
 
-<!-- Tailwind CSS -->
-<link 
-  rel="stylesheet"
-  href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css"
-  integrity="sha512-..."
-  crossorigin="anonymous"
-  referrerpolicy="no-referrer"
-/>
+  <!-- Tailwind CSS -->
+  <link 
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css"
+    integrity="sha512-..."
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
 
-<!-- Hintergrund-Animation CSS -->
-<link rel="stylesheet" href="background.css" />
+  <!-- Hintergrund-Animation CSS -->
+  <link rel="stylesheet" href="background.css" />
 
-<!-- jQuery -->
-<script 
-  src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
-  integrity="sha512-..."
-  crossorigin="anonymous"
-  referrerpolicy="no-referrer">
-</script>
+  <!-- jQuery -->
+  <script 
+    src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
+    integrity="sha512-..."
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer">
+  </script>
 
-<!-- PDF.js Library -->
-<script 
-  src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
-  integrity="sha512-..."
-  crossorigin="anonymous"
-  referrerpolicy="no-referrer">
-</script>
+  <!-- PDF.js Library -->
+  <script 
+    src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+    integrity="sha512-..."
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer">
+  </script>
 
-<!-- Hintergrund-Animation JS -->
-<script defer src="background.js"></script>
-
+  <!-- Hintergrund-Animation JS -->
+  <script defer src="background.js"></script>
 
   <script>
-    // PDF.js Worker
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   </script>
 
@@ -137,7 +135,7 @@
                 stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <span class="text-xl font-semibold">Firefly AI</span>
+            <span class="text-xl text-white font-semibold">Firefly PDF</span>
           </div>
         </div>
       </div>
@@ -802,7 +800,7 @@
       });
     </script>
   </div>
-  </body>
+
   <footer class="text-blue-200 py-6 fixed bottom-0 left-0 w-full">
     <div class="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center">
       <p class="text-sm text-center md:text-left">
@@ -813,6 +811,5 @@
       </p>
     </div>
   </footer>
-  
-  
+</body>
 </html>
