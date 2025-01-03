@@ -5,7 +5,7 @@ const canvas = document.getElementById("networkCanvas");
       canvas.height = window.innerHeight;
 
       const fireflies = [];
-      const numFireflies = 25;
+      const numFireflies = 15;
       const attractionPoint = { x: canvas.width / 2, y: canvas.height / 2 }; // Mittelpunkt des Schwarms
       const attractionStrength = 0.005; // Stärke der Anziehungskraft
       const connectionDistance = 120; // Maximale Entfernung für Netzwerklinien
