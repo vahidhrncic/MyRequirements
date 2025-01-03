@@ -120,13 +120,12 @@
   </style>
 </head>
 
-<!-- Änderung: pb-20 beibehalten bzw. erhöhen, wenn Footer fixiert bleibt -->
 <body class="min-h-screen pb-20">
   <canvas id="networkCanvas"></canvas>
   <div id="mainContent">
     <!-- Header -->
     <header class="shadow-sm fixed w-full top-0 z-50 bg-gray-900 bg-opacity-70">
-      <div class="max-w-7xl mx-auto px-4 py-3"> <!-- Änderung: py-3 statt py-4 -->
+      <div class="max-w-7xl mx-auto px-4 py-3">
         <div class="flex flex-wrap justify-between items-center">
           <div class="flex items-center space-x-3">
             <img src="logo_2.png" alt="Logo" class="h-14 object-contain">
@@ -136,7 +135,6 @@
     </header>
 
     <!-- Main Content -->
-    <!-- Änderung: statt reines mt-20 => sm:mt-16 md:mt-32, um auf kleinen Displays weniger Leerraum zu haben -->
     <main class="max-w-4xl mx-auto px-4 py-8 mt-16 sm:mt-16 md:mt-32">
       <!-- Additional progress-bar for a visual step progress (optional) -->
       <div class="progress-bar mb-8">
@@ -145,8 +143,6 @@
       <div id="viewsContainer" class="fade-enter-active"></div>
     </main>
     
-    
-
     <script>
       /**
        * Konfiguration, inkl. Regex zur Kapitel-Erkennung.
@@ -157,10 +153,14 @@
         regex: {
           multi_space: /\s{2,}/g,
           hyphen_break: /(\w)-\s+(\w)/g,
-          chapter_pattern: /^(\d+(?:\.\d+)*)\s+([A-ZÄÖÜ][^0-9.]*)$/gm
+          // Beispiel: "1", "1.2", "1.2.3" gefolgt von einem Wort (Großbuchstabe).
+          // Für "Kapitel 1" anpassen, z.B. /^Kapitel\s+(\d+)/gm oder ähnliches.
+          chapter_pattern: /^[ \t]*(?:(?:Kapitel|Chapter|Section)\s+)?(\d+(?:\.\d+)*|[IVX]+|[A-Z])[ \t]*[.:]?[ \t]+(.+)$/i
+
+
         },
         abbreviations: [
-          'bsp.', 'z.B.', 'u.A.', 'Abz.', 'Abb.', 'i.d.R.', 'etc.', 'd.h.', 's.o.', 'u.a.', 'bzw.', 'vgl.', 'ggf.'
+          'bsp.', 'z.B.','(z. B.', 'u.A.', 'Abz.', 'Abb.', 'i.d.R.', 'etc.', 'd.h.', 's.o.', 'u.a.', 'bzw.', 'vgl.', 'ggf.'
         ],
         search: {
           words: []
@@ -202,13 +202,12 @@
         },
 
         sentenceRules(sentence) {
-          // Sicherstellen, dass der Satz mit einem Großbuchstaben beginnt
+          // Satz mit großem Anfangsbuchstaben
           if (sentence && !/[A-ZÄÖÜ]/.test(sentence[0])) {
             sentence = sentence[0].toUpperCase() + sentence.slice(1);
           }
-          // Sicherstellen, dass der Satz mit einem Satzendzeichen endet
+          // Satzende sicherstellen
           if (!/[.?!]$/.test(sentence)) {
-            // Überprüfen, ob der Satz mit einer bekannten Abkürzung endet
             const endsWithAbbreviation = config.abbreviations.some(abbr => sentence.endsWith(abbr));
             if (!endsWithAbbreviation) {
               sentence += '.';
@@ -219,20 +218,43 @@
       };
 
       /**
-       * Findet ggf. Kapitelzeilen in einer Seite.
-       * Falls nichts gematcht wurde => Fallback "No chapter found".
-       * Hier nehmen wir das letzte gefundene Kapitel auf einer Seite,
-       * du kannst auch das erste nehmen, falls gewünscht.
+       * Zerlegt einen gegebenen Seiten-Text in Kapitel/Unterkapitel.
+       * Jedes Mal, wenn 'chapter_pattern' matcht, starten wir ein neues Kapitel.
+       * Falls keine Kapitel gefunden werden, entsteht ein einzelner Abschnitt "No chapter found".
        */
-      function detectChapterForPage(pageText) {
-        const matches = [...pageText.matchAll(config.regex.chapter_pattern)];
-        if (matches.length > 0) {
-          const lastMatch = matches[matches.length - 1];
-          return `${lastMatch[1]} ${lastMatch[2]}`;
-        } else {
-          return "No chapter found";
-        }
+function splitTextIntoChapters(pageText) {
+  const lines = pageText.split('\n');
+  const chapterRegex = config.regex.chapter_pattern;
+  let results = [];
+  let currentChapter = "No chapter found";
+  let buffer = [];
+
+  for (let line of lines) {
+    line = line.trim();
+    console.log("Processing line:", line); // Debugging
+
+    const match = line.match(chapterRegex);
+    if (match) {
+      // Speichere aktuellen Puffer als Kapitel
+      if (buffer.length > 0 || currentChapter !== "No chapter found") {
+        results.push({ chapter: currentChapter, text: buffer.join(' ') });
       }
+      // Neues Kapitel setzen
+      currentChapter = match[0];
+      buffer = [];
+    } else {
+      buffer.push(line);
+    }
+  }
+
+  // Letzten Puffer speichern
+  if (buffer.length > 0) {
+    results.push({ chapter: currentChapter, text: buffer.join(' ') });
+  }
+
+  console.log("Final chapters and content:", results); // Debugging
+  return results;
+}
 
       // Globaler Zustand
       const state = {
@@ -658,41 +680,40 @@
         state.files.forEach(fileObj => {
           fileObj.pages.forEach(pageEntry => {
             const pageNumber = pageEntry.pageNumber;
-            // Kapitel pro Seite identifizieren
-            const chapterFound = detectChapterForPage(pageEntry.text);
 
-            // Regex zur Satzerkennung unter Berücksichtigung von Abkürzungen
-            const sentenceEndings = /(?<!\b(?:bsp|zB|uA|Abz\.|Abb\.|i\.d\.R\.|etc\.|d\.h\.|s\.o\.|u\.a\.|bzw\.|vgl\.|siehe))(?<=[.!?])\s+/g;
-            const rawSentences = pageEntry.text.split(sentenceEndings).filter(s => s.trim().length > 0);
+            // Teile jede Seite in mehrere (Unter-)Kapitel
+            const splittedChapters = splitTextIntoChapters(pageEntry.text);
 
-            rawSentences.forEach(sentenceRaw => {
-              let sentence = sentenceRaw.trim();
-              sentence = Helpers.sentenceRules(sentence);
+            splittedChapters.forEach(chapterObj => {
+              // Sätze extrahieren
+              const sentenceEndings = /(?<!\b(?:z\. B\.|z\.|d\. h\.|d\.|bsp\.|u\. a\.|u\. A\.|u\.|Abz\.|Abb\.|i\. d\. R\.|etc\.|d\. h\.|s\. o\.|vgl\.|bzw\.|ggf\.))(?<=[.!?])\s+/g;
 
-              // Prüfe jedes Keyword
-              let foundKeyword = null;
-              state.keywords.forEach(kw => {
-                if (sentence.toLowerCase().includes(kw.toLowerCase())) {
-                  foundKeyword = kw;
-                }
-              });
+              const rawSentences = chapterObj.text.split(sentenceEndings).filter(s => s.trim().length > 0);
 
-              if (foundKeyword) {
-                // Satz highlighten
-                const highlightedSentence = Helpers.highlightWords(sentence, state.keywords);
-                state.results.push({
-                  id: idCounter++,
-                  document: fileObj.name,
-                  chapter: chapterFound,
-                  pageNumber: pageNumber,
-                  requirement: highlightedSentence,
-                  keyword: `
-                    <span class="keyword-tag bg-green-100 text-green-800 px-4 py-2 rounded-full inline-block">
-                      ${foundKeyword}
-                    </span>
-                  `
+              rawSentences.forEach(sentenceRaw => {
+                let sentence = sentenceRaw.trim();
+                sentence = Helpers.sentenceRules(sentence);
+
+                // Prüfe jedes Keyword
+                state.keywords.forEach(kw => {
+                  const kwRegex = new RegExp(`\\b${escapeRegExp(kw)}\\b`, 'i');
+                  if (kwRegex.test(sentence)) {
+                    const highlightedSentence = Helpers.highlightWords(sentence, state.keywords);
+                    state.results.push({
+                      id: idCounter++,
+                      document: fileObj.name,
+                      chapter: chapterObj.chapter,  // Aus splitTextIntoChapters
+                      pageNumber: pageNumber,
+                      requirement: highlightedSentence,
+                      keyword: `
+                        <span class="keyword-tag bg-green-100 text-green-800 px-4 py-2 rounded-full inline-block">
+                          ${kw}
+                        </span>
+                      `
+                    });
+                  }
                 });
-              }
+              });
             });
           });
         });
@@ -751,7 +772,6 @@
         });
       }
 
-      // CSV-Download
       function downloadCSV() {
         if (state.results.length === 0) {
           alert("No results to download.");
@@ -790,16 +810,15 @@
   </div>
 
   <!-- Footer -->
-  <!-- Änderung: py-4 stattdessen, um etwas weniger Platz auf kleinen Bildschirmen zu verbrauchen. -->
-    <footer class="text-blue-200 py-4 fixed bottom-0 left-0 w-full bg-gray-900 bg-opacity-90">
-      <div class="max-w-7xl mx-auto px-4 flex flex-col items-center">
-        <p class="text-xs sm:text-sm text-center my-1">
-          Created by <span class="text-yellow-200 font-semibold">Vahid Hrncic</span> – From Engineers to Engineers
-        </p>
-        <p class="text-xs sm:text-sm text-center my-1">
-          &copy; 2025 <span class="text-yellow-200 font-semibold">firefly solutions</span>. All rights reserved.
-        </p>
-      </div>
-    </footer>
+  <footer class="text-blue-200 py-4 fixed bottom-0 left-0 w-full bg-gray-900 bg-opacity-90">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col items-center">
+      <p class="text-xs sm:text-sm text-center my-1">
+        Created by <span class="text-yellow-200 font-semibold">Vahid Hrncic</span> – From Engineers to Engineers
+      </p>
+      <p class="text-xs sm:text-sm text-center my-1">
+        &copy; 2025 <span class="text-yellow-200 font-semibold">firefly solutions</span>. All rights reserved.
+      </p>
+    </div>
+  </footer>
 </body>
 </html>
